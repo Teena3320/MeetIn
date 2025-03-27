@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'firestore_service.dart';
 import 'otp_verification_page.dart';
 
 class SignUpPage extends StatefulWidget {
@@ -7,27 +8,71 @@ class SignUpPage extends StatefulWidget {
 }
 
 class _SignUpPageState extends State<SignUpPage> {
+  final FirestoreService _firestoreService = FirestoreService();
   bool isEmailSignUp = true;
   TextEditingController emailController = TextEditingController();
   TextEditingController phoneController = TextEditingController();
   String selectedCountryCode = "+91"; // Default country code
+  String? errorMessage;
 
-  void handleSignUp() {
-    String enteredValue =
-        isEmailSignUp
-            ? emailController.text
-            : "$selectedCountryCode ${phoneController.text}";
+  Future<void> handleSignUp() async {
+    String? email = isEmailSignUp ? emailController.text.trim() : null;
+    String? phone = !isEmailSignUp ? phoneController.text.trim() : null;
 
+    //  Validate Email
+    if (isEmailSignUp) {
+      if (email == null ||
+          !RegExp(r"^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$").hasMatch(email)) {
+        setState(() {
+          errorMessage = " Enter a valid email address!";
+        });
+        return;
+      }
+    }
+    //  Validate Phone Number
+    else {
+      if (phone == null ||
+          phone.isEmpty ||
+          !RegExp(r'^[0-9]{8,15}$').hasMatch(phone)) {
+        setState(() {
+          errorMessage = " Enter a valid phone number!";
+        });
+        return;
+      }
+      phone = "$selectedCountryCode$phone"; // Append country code
+    }
+
+    //  Clear error messages if everything is valid
+    setState(() {
+      errorMessage = null;
+    });
+
+    print(" Checking if user exists...");
+    bool exists = await _firestoreService.checkUserExists(email, phone);
+    if (exists) {
+      print(" User already exists!");
+      return;
+    }
+
+    print(" Creating user...");
+    int newUID = await _firestoreService.createUser(email: email, phone: phone);
+    print(" New user created with UID$newUID");
+
+    //  Navigate to OTP Verification
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => OTPVerificationPage(enteredValue: enteredValue),
+        builder:
+            (context) => OTPVerificationPage(
+              enteredValue: isEmailSignUp ? email! : phone!,
+            ),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    debugPrint("Building Widget...");
     return Scaffold(
       backgroundColor: Colors.white,
       body: Center(
@@ -84,6 +129,7 @@ class _SignUpPageState extends State<SignUpPage> {
                 child: TextField(
                   controller: emailController,
                   decoration: InputDecoration(labelText: "Email"),
+                  keyboardType: TextInputType.emailAddress,
                 ),
               ),
             ] else ...[
